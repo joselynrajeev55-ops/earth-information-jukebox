@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Earth Information Jukebox: Arctic Sea Ice</title>
+<style>
+body{font-family:system-ui,sans-serif;max-width:720px;margin:0 auto;padding:20px;background:#0b1d33;color:#eaf4ff}
+h1{margin-bottom:4px}
+.sub{color:#9bb8d6;margin-top:0}
+.card{background:#12304f;border-radius:14px;padding:18px;margin-top:16px}
+button{font-size:18px;padding:12px 22px;border:0;border-radius:10px;background:#4fc3f7;color:#06223a;cursor:pointer;font-weight:600}
+canvas{width:100%;background:#0e2742;border-radius:10px;display:block;margin-top:14px}
+#caption{font-size:20px;margin-top:14px;min-height:60px}
+small{color:#9bb8d6}
+</style></head><body>
+<h1>Earth Information Jukebox</h1>
+<p class="sub" id="sub">Track 1: Arctic sea ice</p>
+<div class="card">
+  <button id="play">▶ Play</button>
+  <canvas id="c" width="680" height="260"></canvas>
+  <div id="caption">Press play. Low note = lots of ice. High note = less ice.</div>
+</div>
+<div class="card">
+  <b>How to listen</b><br>
+  Each note is one year of Arctic sea ice, measured every September when the ice is at its smallest.
+  A <b>low</b> note means more ice. A <b>high</b> note means less ice.
+  Listen to the pitch climb as the ice disappears.<br><br>
+  <small>Data: NSIDC Sea Ice Index (NOAA at NSIDC), based on NASA satellite passive microwave data.</small>
+</div>
+<script>
+const data = [[1979, 7.051], [1980, 7.667], [1981, 7.138], [1982, 7.302], [1983, 7.395], [1984, 6.805], [1985, 6.698], [1986, 7.411], [1987, 7.279], [1988, 7.369], [1989, 7.008], [1990, 6.143], [1991, 6.473], [1992, 7.474], [1993, 6.397], [1994, 7.138], [1995, 6.08], [1996, 7.583], [1997, 6.686], [1998, 6.536], [1999, 6.117], [2000, 6.246], [2001, 6.732], [2002, 5.827], [2003, 6.116], [2004, 5.984], [2005, 5.504], [2006, 5.862], [2007, 4.267], [2008, 4.687], [2009, 5.262], [2010, 4.865], [2011, 4.561], [2012, 3.566], [2013, 5.208], [2014, 5.22], [2015, 4.616], [2016, 4.528], [2017, 4.822], [2018, 4.785], [2019, 4.364], [2020, 4.001], [2021, 4.952], [2022, 4.897], [2023, 4.381], [2024, 4.351], [2025, 4.747], [2026, 4.811]];
+const years = data.map(d=>d[0]), ext = data.map(d=>d[1]);
+const mn = Math.min(...ext), mx = Math.max(...ext);
+const freq = e => 220 + (mx - e) / (mx - mn) * (880 - 220);
+const STEP = 0.5;
+document.getElementById('sub').textContent =
+  'Track 1: Arctic sea ice, September ' + years[0] + ' to ' + years[years.length-1];
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const cap = document.getElementById('caption'), btn = document.getElementById('play');
+let ac = null, osc = null, t0 = 0, playing = false;
+
+function draw(idx){
+  const W = cv.width, H = cv.height, p = 40;
+  ctx.clearRect(0, 0, W, H);
+  const x = i => p + i / (data.length - 1) * (W - 2*p);
+  const y = e => H - p - (e - mn) / (mx - mn) * (H - 2*p);
+  ctx.strokeStyle = '#4fc3f7'; ctx.lineWidth = 3; ctx.beginPath();
+  data.forEach((d, i) => { i ? ctx.lineTo(x(i), y(d[1])) : ctx.moveTo(x(i), y(d[1])); });
+  ctx.stroke();
+  ctx.fillStyle = '#9bb8d6'; ctx.font = '13px sans-serif';
+  ctx.fillText(years[0], p - 10, H - 12);
+  ctx.fillText(years[years.length-1], W - p - 14, H - 12);
+  ctx.fillText('million km²', 4, 16);
+  if (idx >= 0){
+    ctx.fillStyle = '#ffca28'; ctx.beginPath();
+    ctx.arc(x(idx), y(ext[idx]), 8, 0, 7); ctx.fill();
+  }
+}
+
+function stop(){
+  if (osc){ try { osc.stop(); } catch(e){} osc = null; }
+  playing = false; btn.textContent = '▶ Play';
+}
+
+function tick(){
+  if (!playing) return;
+  const idx = Math.floor((ac.currentTime - t0) / STEP);
+  if (idx >= data.length){ stop(); draw(data.length - 1); return; }
+  if (idx >= 0){
+    draw(idx);
+    const diff = ext[idx] - ext[0];
+    cap.innerHTML = '<b>' + years[idx] + '</b>: ' + ext[idx].toFixed(2) +
+      ' million km² of ice' +
+      (idx > 0 ? '<br><small>' + (diff >= 0 ? '+' : '') + diff.toFixed(2) + ' compared with ' + years[0] + '</small>' : '');
+  }
+  requestAnimationFrame(tick);
+}
+
+btn.onclick = () => {
+  if (playing){ stop(); return; }
+  ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+  ac.resume();
+  osc = ac.createOscillator();
+  const g = ac.createGain(); g.gain.value = 0.2;
+  osc.type = 'sine'; osc.connect(g); g.connect(ac.destination);
+  t0 = ac.currentTime + 0.05;
+  data.forEach((d, i) => osc.frequency.setValueAtTime(freq(d[1]), t0 + i * STEP));
+  osc.start(t0); osc.stop(t0 + data.length * STEP);
+  playing = true; btn.textContent = '■ Stop'; tick();
+};
+draw(-1);
+</script></body></html>
